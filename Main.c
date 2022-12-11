@@ -1,3 +1,6 @@
+// CONTINUE EP0007
+
+
 /**
 * 10/1/2022
 * Creating a video game in C from scratch
@@ -11,13 +14,15 @@
 /* 1. Create window message loop. (press a key, move etc)
  * 2. call back Window Procedure
  * 
- * REmoving WIN32..RS# is not defined. 
+ * Removing WIN32..RS# is not defined. 
  */
 #include <stdio.h>
 // surpress warnings of windows.h
 #pragma warning(push, 3)
 #include <windows.h> // OutputDebugText
 #pragma warning(pop)
+// type defs unsigned char now uint8_t: Better because it's explicit in data type.
+#include <stdint.h>
 // Include
 #include "Main.h"
 
@@ -25,7 +30,10 @@
 BOOL gGameIsRunning; // 0 or not. lower g is global. or g_main... init to 0 on compile FALSE
 //HANDLE gGameWindow;
 HWND gGameWindow;
-GAMEBITMAP gDrawingSurface;
+GAMEBITMAP gBackBuffer;// gDrawingSurface;
+MONITORINFO gMonitorInfo = { sizeof(MONITORINFO) };
+
+
 // F5 to run (C++ you can remove arg names and it will omit)
 int WinMain(HINSTANCE instance, HINSTANCE previousInstance, PSTR commandLine, INT cmdShow) {
 	
@@ -40,17 +48,19 @@ int WinMain(HINSTANCE instance, HINSTANCE previousInstance, PSTR commandLine, IN
 		goto Exit;
 	}
 	// Init drawing surface   400 by 240 !!! wide screen
-	gDrawingSurface.bitmapInfo.bmiHeader.biSize = sizeof(gDrawingSurface.bitmapInfo.bmiHeader);
-	gDrawingSurface.bitmapInfo.bmiHeader.biWidth = GAME_RES_WIDTH; // actual resolution 256*240 is nes 4:3 to 16:9 1920 * 1080  -- 256 by 224 = snes
-	gDrawingSurface.bitmapInfo.bmiHeader.biHeight = GAME_RES_HEIGHT;
-	gDrawingSurface.bitmapInfo.bmiHeader.biBitCount = GAME_BPP; // compatable for winAPI
-	gDrawingSurface.bitmapInfo.bmiHeader.biCompression = BI_RGB;
-	gDrawingSurface.bitmapInfo.bmiHeader.biPlanes = 1;
-	if((gDrawingSurface.memory = VirtualAlloc(NULL, GAME_DRAWING_AREA_MEMORY_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE)) == NULL){
+	gBackBuffer.bitmapInfo.bmiHeader.biSize = sizeof(gBackBuffer.bitmapInfo.bmiHeader);
+	gBackBuffer.bitmapInfo.bmiHeader.biWidth = GAME_RES_WIDTH; // actual resolution 256*240 is nes 4:3 to 16:9 1920 * 1080  -- 256 by 224 = snes
+	gBackBuffer.bitmapInfo.bmiHeader.biHeight = GAME_RES_HEIGHT;
+	gBackBuffer.bitmapInfo.bmiHeader.biBitCount = GAME_BPP; // compatable for winAPI
+	gBackBuffer.bitmapInfo.bmiHeader.biCompression = BI_RGB;
+	gBackBuffer.bitmapInfo.bmiHeader.biPlanes = 1;
+	if((gBackBuffer.memory = VirtualAlloc(NULL, GAME_DRAWING_AREA_MEMORY_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE)) == NULL){
 		// virtual when large 64kb if heapalloc for small NULL windows mem address will be created by windows 
 		MessageBoxA(NULL, "Failed to allocate memory for drawing surface!", "Error!", MB_ICONEXCLAMATION | MB_OK);
 		goto Exit;
 	}
+
+	memset(gBackBuffer.memory, 0x7F,GAME_DRAWING_AREA_MEMORY_SIZE); // 0xFF 255
 	
 	MSG message = { 0 };
 
@@ -107,6 +117,8 @@ DWORD  createMainGameWindow(void) {
 	// register window class and make window
 	WNDCLASSEXA windowClass = { 0 }; // add 0 to prevent garbage data and use with data structures.
 
+
+
 	windowClass.cbSize = sizeof(WNDCLASSEXA); // can swap with 0 top init
 	windowClass.style = 0;
 	windowClass.lpfnWndProc = mainWindowProc;
@@ -116,10 +128,10 @@ DWORD  createMainGameWindow(void) {
 	windowClass.hIcon = LoadIconA(NULL, IDI_APPLICATION); // NULL = 0
 	windowClass.hIconSm = LoadIconA(NULL, IDI_APPLICATION);
 	windowClass.hCursor = LoadCursorA(NULL, IDC_ARROW);
-	windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1); // color default grey
+	windowClass.hbrBackground = CreateSolidBrush(RGB(255, 0, 255));//(HBRUSH)(COLOR_WINDOW + 1); // color default grey || pink now with a macro! 255 bits, blue/red = purple
 	windowClass.lpszMenuName = NULL;
 	windowClass.lpszClassName = GAME_NAME "_WINDOWCLASS"; // concats define with game name
-
+	//27:29
 	// window class
 
 	if (RegisterClassExA(&windowClass) == 0) // ! is not readable google documentation for return values
@@ -138,6 +150,17 @@ DWORD  createMainGameWindow(void) {
 		goto Exit;
 	}
 	// label
+	if (GetMonitorInfoA(MonitorFromWindow(gGameWindow, MONITOR_DEFAULTTOPRIMARY), &gMonitorInfo) == 0) { // takes the data and stores it into variable.
+		result = ERROR_MONITOR_NO_DESCRIPTOR;
+		goto Exit;
+	}
+
+
+
+	// CONTINUE
+	int monitorWidth = gMonitorInfo.rcMonitor.right - gMonitorInfo.rcMonitor.left; // accounts for multiple displays
+	int monitorHeight = gMonitorInfo.rcMonitor.bottom - gMonitorInfo.rcMonitor.top;
+
 Exit:
 	return(result);
 } 
@@ -157,7 +180,7 @@ BOOL gameIsAlreadyRunning(void) {
 
 // all input goes here, gamepad, keyboard etx
 void processPlayerInput(void) {
-	short escapeKeyIsDown = GetAsyncKeyState(VK_ESCAPE); // vurtual keycode BLUE means it knows. GREEN from a include. BYTE is 8 bits INT 4 bytes, aka 8*4 [32]bits
+	int16_t escapeKeyIsDown = GetAsyncKeyState(VK_ESCAPE); //(int16_t) not working ?? was a short: vurtual keycode BLUE means it knows. GREEN from a include. BYTE is 8 bits INT 4 bytes, aka 8*4 [32]bits1116
 	if (escapeKeyIsDown) {
 		// send own window message WM_QUIT message
 		SendMessageA(gGameWindow, WM_CLOSE, 0, 0);
@@ -165,7 +188,13 @@ void processPlayerInput(void) {
 }
 // Render frame 
 void renderFrameGraphics(void) {
-
+	// take backbuffer (drawing surface)
+	HDC deviceContext = GetDC(gGameWindow); // get device context
+	// stretches images automatically with window. 
+	StretchDIBits(deviceContext, 0, 0, 100, 100, 0, 0, 100, 100, gBackBuffer.memory, &gBackBuffer.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+											
+	// release it always!
+	ReleaseDC(gGameWindow, deviceContext);
 }
 
 /**
